@@ -2,8 +2,10 @@ services:
 
   app:
     container_name: infobot
-    build: .
+    build:
+      context: .
+      network: host
     restart: always
-    command: ["python", "app.py"]
+    command:  ["python", "main.py"]
     env_file:
       - ./.env
