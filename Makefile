@@ -8,5 +8,5 @@ deploy:
 	docker compose up -d app
 
 logs:
-	docker compose logs
+	docker compose logs -f
 
