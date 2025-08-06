@@ -1,0 +1,9 @@
+services:
+
+  app:
+    container_name: infobot
+    build: .
+    restart: always
+    command: ["python", "app.py"]
+    env_file:
+      - ./.env
