@@ -109,9 +109,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         reply_markup=InlineKeyboardMarkup(
             [
                 [
+                    InlineKeyboardButton(
+                        text="⭐️Rateme", url="https://t.me/BotsArchive/2158"
+                    ),
                     InlineKeyboardButton(text="Your info", switch_inline_query="i"),
+                ],
+                [
                     InlineKeyboardButton(text="ℹ", callback_data="info"),
-                ]
+                ],
             ]
         ),
     )
@@ -123,6 +128,7 @@ async def info_btn(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         text=(
             "<b>ℹ️Information:</b>\n\n"
             '👨‍💻Creator: <a href="https://github.com/raulodev">raulodev</a>\n'
+            '💻Repo: <a href="https://github.com/raulodev/infobot">Github</a>\n'
             '📣Channel: <a href="https://t.me/raulodev">raulodev channel</a>'
         ),
         parse_mode="HTML",
