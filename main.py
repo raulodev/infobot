@@ -84,11 +84,13 @@ def text_html(contents: List[Tuple]):
         if index == 1:
             message.append(f"<b>{header}</b>: {content}")
 
-        elif index == len(contents):
-            message.append(f"<b> └ {header}</b>: {content}")
+        elif content:
 
-        else:
-            message.append(f"<b> ├ {header}</b>: {content}")
+            if index == len(contents):
+                message.append(f"<b> └ {header}</b>: {content}")
+
+            else:
+                message.append(f"<b> ├ {header}</b>: {content}")
 
     return "\n".join(message)
 
