@@ -9,3 +9,4 @@ services:
     command:  ["python", "main.py"]
     env_file:
       - ./.env
+    network_mode: host
