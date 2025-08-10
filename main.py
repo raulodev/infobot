@@ -3,7 +3,7 @@ import json
 import logging
 import traceback
 from datetime import timedelta
-from typing import List, Tuple
+from functools import wraps
 from uuid import uuid4
 
 from decouple import config
@@ -14,7 +14,7 @@ from telegram import (
     InputTextMessageContent,
     Update,
 )
-from telegram.constants import ChatType, MessageOriginType
+from telegram.constants import ChatAction, ChatType, MessageOriginType
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
@@ -24,6 +24,8 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+
+from utils import file_size, text_html
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -37,64 +39,66 @@ BOT_TOKEN = config("BOT_TOKEN")
 DEVELOPER_CHAT_ID = config("DEVELOPER_CHAT_ID", default=None)
 
 
-def file_size(_bytes):
+def send_action(action):
+    """Sends `action` while processing func command."""
 
-    logger.info("File size in bytes %s", _bytes)
+    def decorator(func):
+        @wraps(func)
+        async def handler(update, context, *args, **kwargs):
+            await context.bot.send_chat_action(
+                chat_id=update.effective_message.chat_id, action=action
+            )
+            return await func(update, context, *args, **kwargs)
 
-    system = [
-        (1.126e15, " PB"),
-        (1.1e12, " TB"),
-        (1.074e9, " GB"),
-        (1.049e6, " MB"),
-        (1024, " KB"),
-        (1, (" byte", " bytes")),
-    ]
+        return handler
 
-    for factor, suffix in system:
-        if _bytes >= factor:
-            break
-
-    amount = round(_bytes / factor, 1)
-
-    if isinstance(suffix, tuple):
-        singular, multiple = suffix
-
-        if amount == 1:
-            suffix = singular
-        else:
-            suffix = multiple
-
-    return str(amount) + suffix
+    return decorator
 
 
-def text_html(contents: List[Tuple]):
-    """
-    Example:
-        ```python
-         text_html([("Name", "Raul"),("Username", "@raulcobiellas")])
-        ```
-    """
+def forwarded_messages(update: Update):
+    """Process forwarded messages"""
 
-    message = []
-    for index, row in enumerate(contents, start=1):
-        header, content = row
+    logger.info("Forwarded messages: %s", update.message.forward_origin)
 
-        content = f"<code>{content}</code>" if content else ""
+    if not update.message.forward_origin:
+        return None
 
-        if index == 1:
-            message.append(f"<b>{header}</b>: {content}")
+    if update.message.forward_origin.type == ChatType.CHANNEL:
+        channel = update.message.forward_origin.chat
 
-        elif content:
+        return text_html(
+            [
+                ("🔊Channel", channel.title),
+                ("Username", channel.username),
+                ("ID", channel.id),
+                ("Message ID", update.message.forward_origin.message_id),
+            ]
+        )
 
-            if index == len(contents):
-                message.append(f"<b> └ {header}</b>: {content}")
+    if update.message.forward_origin.type == MessageOriginType.USER:
 
-            else:
-                message.append(f"<b> ├ {header}</b>: {content}")
+        user = update.message.forward_origin.sender_user
 
-    return "\n".join(message)
+        emoji = "🤖" if user.is_bot else "👤"
+
+        return text_html(
+            [
+                (f"{emoji}Name", user.first_name),
+                ("Username", f"@{user.username}" if user.username else "-"),
+                ("ID", user.id),
+            ]
+        )
+
+    if update.message.forward_origin.type == MessageOriginType.HIDDEN_USER:
+
+        return text_html(
+            [
+                ("👤Name", update.message.forward_origin.sender_user_name),
+            ]
+        )
 
 
+@send_action(ChatAction.TYPING)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     logger.info("Start command: %s", update.effective_user)
@@ -170,49 +174,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.inline_query.answer(results=results, is_personal=True, cache_time=0)
 
 
-def forwarded_messages(update: Update):
-    """Process forwarded messages"""
-
-    logger.info("Forwarded messages: %s", update.message.forward_origin)
-
-    if not update.message.forward_origin:
-        return None
-
-    if update.message.forward_origin.type == ChatType.CHANNEL:
-        channel = update.message.forward_origin.chat
-
-        return text_html(
-            [
-                ("🔊Channel", channel.title),
-                ("Username", channel.username),
-                ("ID", channel.id),
-                ("Message ID", update.message.forward_origin.message_id),
-            ]
-        )
-
-    if update.message.forward_origin.type == MessageOriginType.USER:
-
-        user = update.message.forward_origin.sender_user
-
-        emoji = "🤖" if user.is_bot else "👤"
-
-        return text_html(
-            [
-                (f"{emoji}Name", user.first_name),
-                ("Username", f"@{user.username}" if user.username else "-"),
-                ("ID", user.id),
-            ]
-        )
-
-    if update.message.forward_origin.type == MessageOriginType.HIDDEN_USER:
-
-        return text_html(
-            [
-                ("👤Name", update.message.forward_origin.sender_user_name),
-            ]
-        )
-
-
+@send_action(ChatAction.TYPING)
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
@@ -232,19 +194,28 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+@send_action(ChatAction.UPLOAD_PHOTO)
 async def sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
 
     logger.info("Sticker: %s", update.message.sticker)
 
+    sticker = update.message.sticker
+
+    file = await update.message.effective_attachment.get_file()
+
+    file_bytearray = await file.download_as_bytearray()
+
+    await update.message.reply_photo(photo=bytes(file_bytearray))
+
     text = text_html(
         [
-            ("🎨Sticker ID", update.message.sticker.file_id),
-            ("Emoji", update.message.sticker.emoji),
-            ("Set Name", update.message.sticker.set_name),
-            ("Link Set", f"https://t.me/addstickers/{update.message.sticker.set_name}"),
-            ("Size", file_size(update.message.sticker.file_size)),
+            ("🎨Sticker ID", sticker.file_id),
+            ("Emoji", sticker.emoji),
+            ("Set Name", sticker.set_name),
+            ("Link Set", f"https://t.me/addstickers/{sticker.set_name}"),
+            ("Size", file_size(sticker.file_size)),
         ]
     )
 
@@ -254,6 +225,7 @@ async def sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     )
 
 
+@send_action(ChatAction.TYPING)
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
@@ -277,6 +249,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+@send_action(ChatAction.TYPING)
 async def animation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
@@ -299,6 +272,7 @@ async def animation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     )
 
 
+@send_action(ChatAction.TYPING)
 async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
@@ -322,6 +296,7 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+@send_action(ChatAction.TYPING)
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
@@ -344,6 +319,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
 
 
+@send_action(ChatAction.TYPING)
 async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
@@ -366,6 +342,7 @@ async def video_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+@send_action(ChatAction.TYPING)
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
@@ -388,6 +365,7 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+@send_action(ChatAction.TYPING)
 async def dice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
@@ -410,6 +388,7 @@ async def dice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+@send_action(ChatAction.TYPING)
 async def poll_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
