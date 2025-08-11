@@ -194,7 +194,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
-@send_action(ChatAction.UPLOAD_PHOTO)
 async def sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     forwarded_info = forwarded_messages(update)
@@ -207,7 +206,17 @@ async def sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     file_bytearray = await file.download_as_bytearray()
 
-    await update.message.reply_photo(photo=bytes(file_bytearray))
+    if not sticker.is_animated:
+
+        await context.bot.send_chat_action(
+            chat_id=update.effective_message.chat_id, action=ChatAction.UPLOAD_PHOTO
+        )
+        await update.message.reply_photo(photo=bytes(file_bytearray))
+
+    else:
+        await context.bot.send_chat_action(
+            chat_id=update.effective_message.chat_id, action=ChatAction.TYPING
+        )
 
     text = text_html(
         [
