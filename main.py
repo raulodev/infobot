@@ -1,9 +1,11 @@
 import html
+import io
 import json
 import logging
 import traceback
 from datetime import timedelta
 from functools import wraps
+from random import choice
 from uuid import uuid4
 
 from decouple import config
@@ -14,7 +16,8 @@ from telegram import (
     InputTextMessageContent,
     Update,
 )
-from telegram.constants import ChatAction, ChatType, MessageOriginType
+from telegram.constants import ChatAction, ChatType, MessageOriginType, ParseMode
+from telegram.error import TimedOut
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
@@ -25,7 +28,7 @@ from telegram.ext import (
     filters,
 )
 
-from utils import file_size, text_html
+from utils import chunks, create_zip, file_size, make_thumbnail, text_html
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -198,9 +201,9 @@ async def sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     forwarded_info = forwarded_messages(update)
 
-    logger.info("Sticker: %s", update.message.sticker)
-
     sticker = update.message.sticker
+
+    logger.info("Sticker: %s", sticker)
 
     file = await update.message.effective_attachment.get_file()
 
@@ -231,6 +234,15 @@ async def sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text(
         text=f"{forwarded_info}\n\n{text}" if forwarded_info else text,
         parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="⬇️ Download pack", callback_data=f"ds:{sticker.set_name}"
+                    )
+                ]
+            ]
+        ),
     )
 
 
@@ -426,6 +438,85 @@ async def poll_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+@send_action(ChatAction.CHOOSE_STICKER)
+async def download_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+
+    set_name = update.callback_query.data.split(":")[1]
+
+    logger.info("Download pack: %s", set_name)
+
+    sticker_set = await context.bot.get_sticker_set(name=set_name)
+
+    await update.callback_query.edit_message_reply_markup(
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton(text="⏳ Downloading...", callback_data="wait")]]
+        )
+    )
+
+    part_number = 1
+    for part in chunks(sticker_set.stickers, 30):
+
+        stickers = []
+
+        logger.info("Downloading stickers")
+
+        for index, sticker in enumerate(part, start=1):
+            sticker_file = await sticker.get_file()
+            sticker_file_extension = sticker_file.file_path.split(".")[-1]
+            sticker_file_bytearray = await sticker_file.download_as_bytearray()
+
+            file = io.BytesIO(sticker_file_bytearray)
+
+            filename = f"sticker_{index}.{sticker_file_extension}"
+            file.name = filename
+
+            stickers.append({"filename": filename, "file": file})
+
+            if index == len(part):
+
+                logger.info("Making thumbnail")
+                thumbnail = None
+                while not thumbnail:
+                    thumbnail = await make_thumbnail(choice(stickers)["file"].read())
+
+                stickers.append({"filename": "thumbnail.png", "file": thumbnail})
+
+        zip_buffer = await create_zip(
+            set_name=set_name,
+            part=part_number,
+            title=sticker_set.title,
+            bot_username=context.bot.username,
+            stickers=stickers,
+        )
+        part_number += 1
+
+        try:
+            await context.bot.send_chat_action(
+                chat_id=update.effective_message.chat_id,
+                action=ChatAction.UPLOAD_DOCUMENT,
+            )
+
+            logger.info("Sending zip file")
+
+            await update.callback_query.message.reply_document(
+                document=zip_buffer,
+                caption=(
+                    "1. Install Sticker Maker to transfer the stickers to WhatsApp.\n"
+                    "Links: [App Store](https://apps.apple.com/ru/app/sticker-maker-studio/id1443326857) "
+                    "or [Google Play](https://play.google.com/store/apps/details?id=com.marsvard.stickermakerforwhatsapp)."
+                ),
+                parse_mode=ParseMode.MARKDOWN,
+            )
+            await context.bot.send_chat_action(
+                chat_id=update.effective_message.chat_id,
+                action=ChatAction.CHOOSE_STICKER,
+            )
+        except TimedOut:
+            logger.error("Timed out while sending the zip file")
+
+    await update.callback_query.edit_message_reply_markup(reply_markup=None)
+
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log the error and send a telegram message to notify the developer."""
 
@@ -480,6 +571,9 @@ app.add_handler(MessageHandler(filters.Dice.ALL, dice_handler))
 app.add_handler(MessageHandler(filters.POLL, poll_handler))
 
 app.add_handler(CallbackQueryHandler(info_btn, pattern="info"))
+
+app.add_handler(CallbackQueryHandler(download_pack, pattern=r"^ds:\w+$"))
+
 
 app.add_handler(InlineQueryHandler(inline_query))
 

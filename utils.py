@@ -1,5 +1,10 @@
+import io
 import logging
+import zipfile
+from itertools import islice
 from typing import List, Tuple
+
+from PIL import Image, UnidentifiedImageError
 
 logger = logging.getLogger(__name__)
 
@@ -60,3 +65,52 @@ def text_html(contents: List[Tuple]):
                 message.append(f"<b> ├ {header}</b>: {content}")
 
     return "\n".join(message)
+
+
+async def create_zip(
+    set_name: str, part: int, title: str, bot_username: str, stickers: List[dict]
+):
+
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("author.txt", f"@{bot_username}")
+        zf.writestr("title.txt", f"{title} - ({part})")
+        for sticker in stickers:
+            sticker_file = sticker["file"]
+            sticker_filename = sticker["filename"]
+
+            sticker_file.seek(0)
+            zf.writestr(sticker_filename, sticker_file.read())
+
+    zip_buffer.seek(0)
+    zip_buffer.name = f"{set_name}.part{part}.wastickers"
+    return zip_buffer
+
+
+def chunks(iterable, tam=30):
+    it = iter(iterable)
+    while True:
+        bloque = list(islice(it, tam))
+        if not bloque:
+            break
+        yield bloque
+
+
+async def make_thumbnail(byte_array, size=(96, 96)):
+
+    try:
+
+        image = Image.open(io.BytesIO(byte_array))
+        image.thumbnail(size)
+
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        return buffer
+
+    except UnidentifiedImageError:
+        logger.error("Error while making the thumbnail")
+        with open("invalid_image_dump.png", "wb") as f:
+            f.write(byte_array)
