@@ -518,10 +518,6 @@ async def download_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 ),
                 parse_mode=ParseMode.MARKDOWN,
             )
-            await context.bot.send_chat_action(
-                chat_id=update.effective_message.chat_id,
-                action=ChatAction.CHOOSE_STICKER,
-            )
         except TimedOut:
             logger.error("Timed out while sending the zip file")
 
