@@ -1,5 +1,4 @@
 import html
-import io
 import json
 import logging
 import traceback
@@ -8,6 +7,7 @@ from functools import wraps
 from random import choice
 from uuid import uuid4
 
+import filetype
 from decouple import config
 from telegram import (
     InlineKeyboardButton,
@@ -447,6 +447,8 @@ async def download_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     try:
         sticker_set = await context.bot.get_sticker_set(name=set_name)
+
+        logger.info("Sticker set: %s", sticker_set)
     except TimedOut:
         logger.error("Timed out while getting the sticker set")
         await update.callback_query.message.reply_text(
@@ -470,21 +472,36 @@ async def download_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         for index, sticker in enumerate(part, start=1):
             try:
                 sticker_file = await sticker.get_file()
-                sticker_file_extension = sticker_file.file_path.split(".")[-1]
                 sticker_file_bytearray = await sticker_file.download_as_bytearray()
+                sticker_file_type = filetype.guess(sticker_file_bytearray)
+                sticker_file_extension = sticker_file_type.extension
+
             except TimedOut:
                 logger.error("Timed out while getting the sticker file")
                 continue
 
-            file = await resize_image(sticker_file_bytearray)
+            image = await resize_image(sticker_file_bytearray)
 
-            if not file:
+            # Maybe the sticker is not an image
+            if not image:
+                logger.info("Image type: %s", sticker_file_type.mime)
+                logger.info("Sticker %s", sticker)
+
+                if DEVELOPER_CHAT_ID:
+                    await context.bot.send_message(
+                        chat_id=DEVELOPER_CHAT_ID,
+                        text="🚫 Error while resizing the sticker",
+                    )
+                    await context.bot.send_sticker(
+                        chat_id=DEVELOPER_CHAT_ID, sticker=sticker
+                    )
+
                 continue
 
             filename = f"sticker_{index}.{sticker_file_extension}"
-            file.name = filename
+            image.name = filename
 
-            stickers.append({"filename": filename, "file": file})
+            stickers.append({"filename": filename, "file": image})
 
             if index == len(part):
 
