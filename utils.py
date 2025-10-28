@@ -114,3 +114,16 @@ async def make_thumbnail(byte_array, size=(96, 96)):
         logger.error("Error while making the thumbnail")
         with open("invalid_image_dump.png", "wb") as f:
             f.write(byte_array)
+
+
+async def resize_image(byte_array, size=(512, 512)):
+
+    image = Image.open(io.BytesIO(byte_array))
+
+    resized_image = image.resize(size)
+
+    buffer = io.BytesIO()
+    resized_image.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    return buffer

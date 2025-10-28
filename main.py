@@ -28,7 +28,7 @@ from telegram.ext import (
     filters,
 )
 
-from utils import chunks, create_zip, file_size, make_thumbnail, text_html
+from utils import chunks, create_zip, file_size, make_thumbnail, resize_image, text_html
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -445,7 +445,14 @@ async def download_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     logger.info("Download pack: %s", set_name)
 
-    sticker_set = await context.bot.get_sticker_set(name=set_name)
+    try:
+        sticker_set = await context.bot.get_sticker_set(name=set_name)
+    except TimedOut:
+        logger.error("Timed out while getting the sticker set")
+        await update.callback_query.message.reply_text(
+            text="❌ Error while getting the sticker set"
+        )
+        return
 
     await update.callback_query.edit_message_reply_markup(
         reply_markup=InlineKeyboardMarkup(
@@ -461,11 +468,15 @@ async def download_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.info("Downloading stickers")
 
         for index, sticker in enumerate(part, start=1):
-            sticker_file = await sticker.get_file()
-            sticker_file_extension = sticker_file.file_path.split(".")[-1]
-            sticker_file_bytearray = await sticker_file.download_as_bytearray()
+            try:
+                sticker_file = await sticker.get_file()
+                sticker_file_extension = sticker_file.file_path.split(".")[-1]
+                sticker_file_bytearray = await sticker_file.download_as_bytearray()
+            except TimedOut:
+                logger.error("Timed out while getting the sticker file")
+                continue
 
-            file = io.BytesIO(sticker_file_bytearray)
+            file = await resize_image(sticker_file_bytearray)
 
             filename = f"sticker_{index}.{sticker_file_extension}"
             file.name = filename
