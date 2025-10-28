@@ -478,6 +478,9 @@ async def download_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
             file = await resize_image(sticker_file_bytearray)
 
+            if not file:
+                continue
+
             filename = f"sticker_{index}.{sticker_file_extension}"
             file.name = filename
 

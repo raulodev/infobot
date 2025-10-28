@@ -100,6 +100,8 @@ def chunks(iterable, tam=30):
 async def make_thumbnail(byte_array, size=(96, 96)):
 
     try:
+        logger.info("Len byte array: %s", len(byte_array))
+        logger.info("Type byte array: %s", type(byte_array))
 
         image = Image.open(io.BytesIO(byte_array))
         image.thumbnail(size)
@@ -118,12 +120,22 @@ async def make_thumbnail(byte_array, size=(96, 96)):
 
 async def resize_image(byte_array, size=(512, 512)):
 
-    image = Image.open(io.BytesIO(byte_array))
+    try:
 
-    resized_image = image.resize(size)
+        logger.info("Len byte array: %s", len(byte_array))
+        logger.info("Type byte array: %s", type(byte_array))
 
-    buffer = io.BytesIO()
-    resized_image.save(buffer, format="PNG")
-    buffer.seek(0)
+        image = Image.open(io.BytesIO(byte_array))
 
-    return buffer
+        resized_image = image.resize(size)
+
+        buffer = io.BytesIO()
+        resized_image.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        return buffer
+
+    except UnidentifiedImageError:
+        logger.error("Error while resizing the image")
+        with open("invalid_image_dump.png", "wb") as f:
+            f.write(byte_array)
