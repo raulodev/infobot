@@ -14,6 +14,10 @@ from telegram import (
     InlineKeyboardMarkup,
     InlineQueryResultArticle,
     InputTextMessageContent,
+    KeyboardButton,
+    KeyboardButtonRequestChat,
+    KeyboardButtonRequestUsers,
+    ReplyKeyboardMarkup,
     Update,
 )
 from telegram.constants import ChatAction, ChatType, MessageOriginType, ParseMode
@@ -79,7 +83,6 @@ def forwarded_messages(update: Update):
         )
 
     if update.message.forward_origin.type == MessageOriginType.USER:
-
         user = update.message.forward_origin.sender_user
 
         emoji = "🤖" if user.is_bot else "👤"
@@ -93,7 +96,6 @@ def forwarded_messages(update: Update):
         )
 
     if update.message.forward_origin.type == MessageOriginType.HIDDEN_USER:
-
         return text_html(
             [
                 ("👤Name", update.message.forward_origin.sender_user_name),
@@ -113,18 +115,78 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(
         text=f"<b>I'am ready {update.effective_user.first_name} send the message.</b>",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(
+        reply_markup=ReplyKeyboardMarkup(
             [
                 [
-                    InlineKeyboardButton(
-                        text="⭐️Rateme", url="https://t.me/BotsArchive/2158"
+                    KeyboardButton(
+                        text="👤 User",
+                        request_users=KeyboardButtonRequestUsers(
+                            request_id=1, user_is_bot=False
+                        ),
                     ),
-                    InlineKeyboardButton(text="Your info", switch_inline_query="i"),
+                    KeyboardButton(
+                        text="⭐️ Premium",
+                        request_users=KeyboardButtonRequestUsers(
+                            request_id=2, user_is_bot=False, user_is_premium=True
+                        ),
+                    ),
+                    KeyboardButton(
+                        text="🤖 Bot",
+                        request_users=KeyboardButtonRequestUsers(
+                            request_id=3, user_is_bot=True
+                        ),
+                    ),
                 ],
                 [
-                    InlineKeyboardButton(text="ℹ", callback_data="info"),
+                    KeyboardButton(
+                        text="👥 Group",
+                        request_chat=KeyboardButtonRequestChat(
+                            request_id=4, chat_is_channel=False, chat_is_forum=False
+                        ),
+                    ),
+                    KeyboardButton(
+                        text="📢 Channel",
+                        request_chat=KeyboardButtonRequestChat(
+                            request_id=5, chat_is_channel=True
+                        ),
+                    ),
+                    KeyboardButton(
+                        text="💬 Forum",
+                        request_chat=KeyboardButtonRequestChat(
+                            request_id=6, chat_is_forum=True, chat_is_channel=False
+                        ),
+                    ),
                 ],
-            ]
+                [
+                    KeyboardButton(
+                        text="👥 My Group",
+                        request_chat=KeyboardButtonRequestChat(
+                            request_id=7,
+                            chat_is_channel=False,
+                            chat_is_forum=False,
+                            chat_is_created=True,
+                        ),
+                    ),
+                    KeyboardButton(
+                        text="📢 My Channel",
+                        request_chat=KeyboardButtonRequestChat(
+                            request_id=8,
+                            chat_is_channel=True,
+                            chat_is_created=True,
+                        ),
+                    ),
+                    KeyboardButton(
+                        text="💬 My Forum",
+                        request_chat=KeyboardButtonRequestChat(
+                            request_id=9,
+                            chat_is_channel=False,
+                            chat_is_forum=True,
+                            chat_is_created=True,
+                        ),
+                    ),
+                ],
+            ],
+            resize_keyboard=True,
         ),
     )
 
@@ -210,7 +272,6 @@ async def sticker_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     file_bytearray = await file.download_as_bytearray()
 
     if not sticker.is_animated:
-
         await context.bot.send_chat_action(
             chat_id=update.effective_message.chat_id, action=ChatAction.UPLOAD_PHOTO
         )
@@ -464,7 +525,6 @@ async def download_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     part_number = 1
     for part in chunks(sticker_set.stickers, 30):
-
         stickers = []
 
         logger.info("Downloading stickers")
@@ -504,7 +564,6 @@ async def download_pack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             stickers.append({"filename": filename, "file": image})
 
             if index == len(part):
-
                 logger.info("Making thumbnail")
                 thumbnail = None
                 while not thumbnail:
@@ -567,7 +626,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
     if DEVELOPER_CHAT_ID:
-
         await context.bot.send_message(
             chat_id=DEVELOPER_CHAT_ID, text=message, parse_mode="HTML"
         )
